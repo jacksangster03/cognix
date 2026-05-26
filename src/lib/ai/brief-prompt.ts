@@ -1,7 +1,4 @@
 // ─── Prompt builders ──────────────────────────────────────────────────────────
-// Builds the system and user prompts sent to any LLM provider.
-// The system prompt hard-constrains model behaviour. The user prompt embeds
-// the full BriefContext so the model has everything it needs.
 
 import type { BriefContext } from "./brief-schema"
 
@@ -18,6 +15,7 @@ STRICT RULES:
 8. Tone: direct, evidence-informed, like a knowledgeable coach who respects your intelligence.
 9. The "headline" field must be a single sentence that captures today's key message.
 10. The "one_priority" field must be a single actionable instruction for today.
+11. If is_demo is true or data_sources.whoop is "mock", write a single honest sentence in "data_confidence_note" noting that biometric data is currently mock/demo data, and that the readiness interpretation should be treated as a product demonstration rather than a live physiological reading. Do not repeat this caveat in other fields.
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly these fields, no other keys, no markdown wrapping:
@@ -36,7 +34,11 @@ Return ONLY valid JSON with exactly these fields, no other keys, no markdown wra
 }`
 
 export function buildUserPrompt(context: BriefContext): string {
-  return `Here is today's health context for ${context.settings.name || "the user"}. Write the Cognix daily brief.
+  const demoNote = context.is_demo || context.data_sources.whoop === "mock"
+    ? `\nIMPORTANT: This brief is based on mock/demo biometric data (data_sources.whoop = "${context.data_sources.whoop}", is_demo = ${context.is_demo}). Write the "data_confidence_note" field to clearly but briefly note this. The brief should still be useful and not entirely dismissed.`
+    : ""
+
+  return `Here is today's health context for ${context.settings.name || "the user"}. Write the Cognix daily brief.${demoNote}
 
 \`\`\`json
 ${JSON.stringify(context, null, 2)}

@@ -131,6 +131,13 @@ export async function POST(req: NextRequest) {
     generated_at: new Date().toISOString(),
     fallback_used: fallbackUsed,
     cached: false,
+    is_demo: (context as { is_demo?: boolean }).is_demo ?? false,
+    data_sources: (context as { data_sources?: BriefMetadata["data_sources"] }).data_sources ?? {
+      whoop: "missing",
+      checkin: "missing",
+      training: "missing",
+      nutrition: "missing",
+    },
   }
 
   return NextResponse.json({ brief, metadata }, { status: 200 })

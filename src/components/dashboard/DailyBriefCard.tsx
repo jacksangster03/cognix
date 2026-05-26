@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ChevronDown, ChevronUp, Sparkles, RefreshCw } from "lucide-react"
+import { ChevronDown, ChevronUp, Sparkles, RefreshCw, FlaskConical } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { loadCachedBrief, saveCachedBrief } from "@/lib/storage"
 import type { DailyRecommendation } from "@/lib/types"
-import type { CognixBrief, BriefMetadata, BriefContext, CachedBrief } from "@/lib/ai/brief-schema"
+import type { CognixBrief, BriefMetadata, BriefContext, CachedBrief, DataSources } from "@/lib/ai/brief-schema"
 
 interface DailyBriefCardProps {
   recommendation: DailyRecommendation
@@ -36,13 +36,36 @@ function mapRecToBrief(rec: DailyRecommendation): CognixBrief {
   }
 }
 
+// ─── Demo data notice ─────────────────────────────────────────────────────────
+
+function DemoNotice({ sources }: { sources: DataSources }) {
+  const isFullDemo = sources.checkin === "demo" && sources.whoop === "mock"
+  const isPartialDemo = sources.checkin === "user" && sources.whoop === "mock"
+
+  if (sources.whoop !== "mock") return null
+
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-amber-800/40 bg-amber-950/25 px-3 py-2">
+      <FlaskConical size={11} className="text-amber-500/80 flex-shrink-0 mt-0.5" />
+      <p className="text-[10px] text-amber-500/80 leading-relaxed">
+        {isPartialDemo
+          ? "Partial demo data: your manual logs are real, but biometric data (recovery, HRV, sleep) is mock until a real wearable is connected."
+          : isFullDemo
+            ? "Demo data active: this brief uses mock WHOOP-style biometrics. Connect a real wearable to get a live physiological reading."
+            : "Biometric data is currently mock. Connect a real wearable in Integrations for a live reading."}
+      </p>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBriefCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [briefState, setBriefState] = useState<BriefState>({ status: "idle" })
 
   const today = briefContext.date
 
-  // On mount, check localStorage for a cached brief for today
   useEffect(() => {
     const cached = loadCachedBrief(today)
     if (cached) {
@@ -64,13 +87,15 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.error ?? `HTTP ${res.status}`)
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`)
       }
       const data = await res.json() as { brief: CognixBrief; metadata: BriefMetadata }
       const toCache: CachedBrief = {
         date: today,
         brief: data.brief,
         metadata: data.metadata,
+        data_sources: briefContext.data_sources,
+        is_demo: briefContext.is_demo,
       }
       saveCachedBrief(toCache)
       setBriefState({ status: "ready", brief: data.brief, metadata: data.metadata })
@@ -99,6 +124,12 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
               AI
             </span>
           )}
+          {briefContext.data_sources.whoop === "mock" && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-800/40 text-amber-500/80 font-medium flex items-center gap-1">
+              <FlaskConical size={8} />
+              mock data
+            </span>
+          )}
           {isCached && (
             <span className="text-[9px] text-zinc-600">cached</span>
           )}
@@ -110,6 +141,9 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
 
       {expanded && (
         <CardContent className="px-4 pb-4 space-y-3">
+          {/* Demo data notice */}
+          <DemoNotice sources={briefContext.data_sources} />
+
           {/* Generate button */}
           {briefState.status === "idle" || briefState.status === "error" ? (
             <div className="space-y-1.5">
@@ -153,7 +187,8 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
 
           {briefState.status === "ready" && (
             <p className="text-[9px] text-zinc-700">
-              {briefState.metadata.provider}{briefState.metadata.model !== "deterministic-v1" ? ` / ${briefState.metadata.model}` : ""}
+              {briefState.metadata.provider}
+              {briefState.metadata.model !== "deterministic-v1" ? ` / ${briefState.metadata.model}` : ""}
               {isFallback ? " (fallback)" : ""}
               {isCached ? " / cached" : ""}
             </p>

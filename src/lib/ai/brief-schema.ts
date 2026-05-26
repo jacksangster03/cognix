@@ -8,9 +8,6 @@ import type {
 } from "@/lib/types"
 
 // ─── LLM output schema ────────────────────────────────────────────────────────
-// The model must return valid JSON matching this shape. Fields must contain
-// plain prose: no markdown, no em dashes, British English. The model never
-// sets mode or scores — those are passed in from the deterministic engine.
 
 export const CognixBriefSchema = z.object({
   headline: z.string().min(10).max(200),
@@ -28,27 +25,45 @@ export const CognixBriefSchema = z.object({
 
 export type CognixBrief = z.infer<typeof CognixBriefSchema>
 
+// ─── Data source tags ─────────────────────────────────────────────────────────
+// Every signal that feeds the brief is tagged with its provenance.
+// "mock"      = generated from mock-whoop.ts, not a real device
+// "real"      = from an authenticated wearable API (v0.4+)
+// "user"      = user typed it into a check-in form
+// "rough_user"= user typed a rough band (not tracked calories), still their data
+// "demo"      = seeded from MOCK_CHECKIN_HISTORY / MOCK_TRAINING_HISTORY
+// "missing"   = signal not present at all
+
+export interface DataSources {
+  whoop: "mock" | "real" | "missing"
+  checkin: "user" | "demo" | "missing"
+  training: "user" | "demo" | "missing"
+  nutrition: "rough_user" | "demo" | "missing"
+}
+
 // ─── Brief metadata ───────────────────────────────────────────────────────────
 
 export interface BriefMetadata {
   provider: string
   model: string
-  generated_at: string    // ISO datetime
+  generated_at: string
   fallback_used: boolean
   cached: boolean
+  is_demo: boolean
+  data_sources: DataSources
 }
 
-// ─── Cached brief (stored in localStorage) ───────────────────────────────────
+// ─── Cached brief ─────────────────────────────────────────────────────────────
 
 export interface CachedBrief {
-  date: string           // ISO date YYYY-MM-DD
+  date: string
   brief: CognixBrief
   metadata: BriefMetadata
+  data_sources: DataSources
+  is_demo: boolean
 }
 
 // ─── Brief context (sent to /api/brief) ──────────────────────────────────────
-// Contains ALL pre-calculated signals. The LLM reads these and writes
-// explanatory prose. It never modifies mode, scores, or calculated values.
 
 export interface WhoopSummary {
   recovery_score: number
@@ -80,6 +95,8 @@ export interface BriefContext {
   deterministic_rec: DailyRecommendation
   data_confidence: DataConfidence
   whoop_summary: WhoopSummary | null
+  is_demo: boolean
+  data_sources: DataSources
 }
 
 export const BriefContextSchema = z.object({
@@ -114,4 +131,11 @@ export const BriefContextSchema = z.object({
   deterministic_rec: z.any(),
   data_confidence: z.any(),
   whoop_summary: z.any().nullable(),
+  is_demo: z.boolean(),
+  data_sources: z.object({
+    whoop: z.enum(["mock", "real", "missing"]),
+    checkin: z.enum(["user", "demo", "missing"]),
+    training: z.enum(["user", "demo", "missing"]),
+    nutrition: z.enum(["rough_user", "demo", "missing"]),
+  }),
 })

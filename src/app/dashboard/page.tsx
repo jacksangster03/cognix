@@ -19,6 +19,7 @@ import { buildConfidence } from "@/lib/confidence"
 import { DEFAULT_SETTINGS } from "@/lib/constants"
 import { loadSettings, loadTodayCheckIn, loadRecentSessions, loadDemoMode } from "@/lib/storage"
 import { buildBriefContext } from "@/lib/ai/build-brief-context"
+import { FlaskConical } from "lucide-react"
 
 function msToHours(ms: number): string {
   return (ms / 3600000).toFixed(1)
@@ -31,18 +32,23 @@ function scoreStatus(score: number): "good" | "moderate" | "poor" {
 }
 
 export default function DashboardPage() {
-  const { settings, demoMode, whoop, checkin, sessions } = useMemo(() => {
+  const { settings, demoMode, whoop, checkin, sessions, checkinFromDemo, sessionsFromDemo } = useMemo(() => {
     const dm = loadDemoMode()
     const s = loadSettings()
     const c = loadTodayCheckIn()
     const sess = loadRecentSessions(28)
+
+    const usingMockCheckin = dm
+    const usingMockSessions = dm && sess.length === 0
 
     return {
       settings: s.name ? s : DEFAULT_SETTINGS,
       demoMode: dm,
       whoop: dm ? getTodayMockWhoop() : null,
       checkin: dm ? (MOCK_CHECKIN_HISTORY[MOCK_CHECKIN_HISTORY.length - 1] ?? c) : c,
-      sessions: dm && sess.length === 0 ? MOCK_TRAINING_HISTORY : sess,
+      sessions: usingMockSessions ? MOCK_TRAINING_HISTORY : sess,
+      checkinFromDemo: usingMockCheckin,
+      sessionsFromDemo: usingMockSessions,
     }
   }, [])
 
@@ -59,7 +65,12 @@ export default function DashboardPage() {
   const confidence = buildConfidence(whoop, checkin, sessions, !!settings.name)
 
   const todayISO = new Date().toISOString().split("T")[0]
-  const briefContext = buildBriefContext(todayISO, scores, checkin, whoop, sessions, settings)
+  const briefContext = buildBriefContext(todayISO, scores, checkin, whoop, sessions, settings, {
+    isDemoMode: demoMode,
+    whoopIsReal: false,   // flip to true in v0.4 when WHOOP OAuth is connected
+    checkinFromDemo,
+    sessionsFromDemo,
+  })
 
   // Build trend data from mock history
   const trendData = MOCK_WHOOP_HISTORY.slice(-14).map((d) => ({
@@ -82,6 +93,7 @@ export default function DashboardPage() {
         mode={mode}
         headline={recommendation.headline}
         isDemo={demoMode}
+        dataSources={briefContext.data_sources}
       />
 
       <div className="px-6 py-4 space-y-5 pb-24 lg:pb-6">
@@ -89,6 +101,16 @@ export default function DashboardPage() {
           title={today}
           subtitle={`${settings.name ? `Hi ${settings.name}.` : ""} Here is your daily readiness report.`}
         />
+
+        {/* Data source chip */}
+        {briefContext.data_sources.whoop === "mock" && (
+          <div className="flex items-center gap-1.5 text-[10px] text-amber-500/80 bg-amber-950/30 border border-amber-800/40 rounded-md px-2.5 py-1.5">
+            <FlaskConical size={11} className="flex-shrink-0" />
+            {briefContext.data_sources.checkin === "user"
+              ? "Manual logs + mock biometrics: your check-in data is real, but biometric readings are simulated."
+              : "Demo biometrics: all data including biometric readings is currently simulated."}
+          </div>
+        )}
 
         {/* Metric tiles */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

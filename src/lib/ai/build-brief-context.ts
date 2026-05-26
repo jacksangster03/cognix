@@ -1,13 +1,27 @@
 // ─── BriefContext builder ─────────────────────────────────────────────────────
 // Assembles all pre-calculated signals into the BriefContext shape that is
 // sent to /api/brief. Called from client components after the deterministic
-// engine has already run. Nothing here calls an LLM.
+// engine has already run.
+//
+// DataSourceFlags documents the provenance of each input signal:
+//   isDemoMode     - the app's demo mode toggle is on
+//   whoopIsReal    - set to true in v0.4 when WHOOP OAuth is connected;
+//                    false in v0.1 (all WHOOP data is mock)
+//   checkinFromDemo - the checkin was pulled from MOCK_CHECKIN_HISTORY
+//   sessionsFromDemo - sessions were pulled from MOCK_TRAINING_HISTORY
 
-import { getACWR } from "@/lib/scoring"
+import { getACWR, determineMode } from "@/lib/scoring"
 import { buildConfidence } from "@/lib/confidence"
 import { buildDailyRecommendation } from "@/lib/recommendations"
 import type { MockWhoopDay, DailyCheckIn, TrainingSession, ReadinessScores, UserSettings } from "@/lib/types"
-import type { BriefContext } from "./brief-schema"
+import type { BriefContext, DataSources } from "./brief-schema"
+
+export interface DataSourceFlags {
+  isDemoMode: boolean
+  whoopIsReal?: boolean       // default false; flip to true in v0.4
+  checkinFromDemo?: boolean   // true when using MOCK_CHECKIN_HISTORY
+  sessionsFromDemo?: boolean  // true when using MOCK_TRAINING_HISTORY
+}
 
 export function buildBriefContext(
   date: string,
@@ -16,17 +30,21 @@ export function buildBriefContext(
   whoop: MockWhoopDay | null,
   sessions: TrainingSession[],
   settings: UserSettings,
+  flags: DataSourceFlags = { isDemoMode: false },
 ): BriefContext {
-  const mode = (() => {
-    const { determineMode } = require("@/lib/scoring")
-    return determineMode(scores, checkin)
-  })()
+  const {
+    isDemoMode,
+    whoopIsReal = false,
+    checkinFromDemo = isDemoMode,
+    sessionsFromDemo = isDemoMode,
+  } = flags
+
+  const mode = determineMode(scores, checkin)
 
   const recentSessions = sessions.filter((s) => {
     const diff = (new Date(date).getTime() - new Date(s.date).getTime()) / 86400000
     return diff <= 7
   })
-
   const acute = recentSessions.reduce((sum, s) => sum + s.rpe * s.duration_minutes, 0) / 7
   const chronicSessions = sessions.filter((s) => {
     const diff = (new Date(date).getTime() - new Date(s.date).getTime()) / 86400000
@@ -37,6 +55,17 @@ export function buildBriefContext(
 
   const deterministic_rec = buildDailyRecommendation(scores, checkin, whoop, sessions, settings)
   const data_confidence = buildConfidence(whoop, checkin, sessions, !!settings.name)
+
+  const data_sources: DataSources = {
+    whoop: whoop !== null ? (whoopIsReal ? "real" : "mock") : "missing",
+    checkin: checkin !== null ? (checkinFromDemo ? "demo" : "user") : "missing",
+    training: sessions.length > 0 ? (sessionsFromDemo ? "demo" : "user") : "missing",
+    nutrition: checkin !== null
+      ? (checkinFromDemo ? "demo" : "rough_user")
+      : "missing",
+  }
+
+  const is_demo = isDemoMode || data_sources.whoop === "mock" || data_sources.checkin === "demo"
 
   return {
     date,
@@ -68,5 +97,7 @@ export function buildBriefContext(
           resting_heart_rate: whoop.resting_heart_rate,
         }
       : null,
+    is_demo,
+    data_sources,
   }
 }

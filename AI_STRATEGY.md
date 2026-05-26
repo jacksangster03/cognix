@@ -145,6 +145,43 @@ Conversational interface. LLM with function calling against Supabase. Read-only 
 
 ---
 
+## Data provenance in the brief
+
+Every brief carries a `DataSources` object describing the provenance of each signal:
+
+```typescript
+interface DataSources {
+  whoop: "mock" | "real" | "missing"
+  checkin: "user" | "demo" | "missing"
+  training: "user" | "demo" | "missing"
+  nutrition: "rough_user" | "demo" | "missing"
+}
+```
+
+**How provenance is determined** (in `build-brief-context.ts`):
+
+- `whoop: "mock"` — all WHOOP data in v0.1 comes from `mock-whoop.ts`. Switches to `"real"` in v0.4 when `whoopIsReal: true` is passed to `buildBriefContext`.
+- `checkin: "user"` — the check-in was logged by the user into localStorage. `"demo"` when demo mode is on and the data comes from `MOCK_CHECKIN_HISTORY`.
+- `training: "user"` — sessions were logged by the user. `"demo"` when demo mode on and no real sessions exist.
+- `nutrition: "rough_user"` — derived from a user check-in (not tracked calories, still their data). `"demo"` when from mock history.
+
+`is_demo` is `true` if demo mode is on, or if `whoop === "mock"`, or if `checkin === "demo"`.
+
+### How the model uses this
+
+If `is_demo` is true or `data_sources.whoop === "mock"`, the system prompt instructs the model to write an honest note in `data_confidence_note` that the brief is based on mock biometric data and should be treated as a product demonstration. No other field repeats this caveat.
+
+### How the UI uses this
+
+- **ReadinessHero**: amber "manual + mock biometrics" or "demo mode" chip
+- **Dashboard**: amber notice chip below the page header
+- **DailyBriefCard header**: small "mock data" badge
+- **DailyBriefCard body**: amber callout panel with full explanation
+
+All indicators disappear when `data_sources.whoop === "real"`.
+
+---
+
 ## No medical claims: enforcement
 
 Every system prompt includes:

@@ -260,18 +260,66 @@ A rough answer every day for 30 days beats a precise answer for 3 days.
 
 ---
 
+## Data provenance: what is real vs. mock in v0.1
+
+Cognix is transparent about which signals are real and which are simulated. Every data signal is tagged with its provenance in the `DataSources` object, which appears in the brief context and in cached briefs.
+
+| Signal | v0.1 status | When it becomes real |
+|---|---|---|
+| WHOOP recovery score | Mock (`mock-whoop.ts`) | v0.4: WHOOP OAuth |
+| HRV, RHR, sleep data | Mock (`mock-whoop.ts`) | v0.4: WHOOP OAuth |
+| Daily check-in (wellbeing, nutrition, caffeine) | Real user data if logged, demo if not | Immediate: log a check-in |
+| Training sessions | Real user data if logged, demo if not | Immediate: log a session |
+| Readiness score | Deterministic from above signals | Always deterministic |
+
+### UI indicators
+
+The app shows a persistent indicator wherever mock biometric data is powering the readiness score:
+
+- **Header chip**: "manual + mock biometrics" or "demo mode" (amber, small)
+- **Brief card badge**: "mock data" chip on the brief card header
+- **Brief card notice** (when expanded): amber callout explaining exactly which signals are mock and why
+
+These indicators disappear automatically when real WHOOP data is connected in v0.4 (set `whoopIsReal: true` in `buildBriefContext`).
+
+### DataSources type
+
+```typescript
+interface DataSources {
+  whoop: "mock" | "real" | "missing"       // "real" from v0.4
+  checkin: "user" | "demo" | "missing"     // "user" as soon as you log a check-in
+  training: "user" | "demo" | "missing"    // "user" as soon as you log a session
+  nutrition: "rough_user" | "demo" | "missing"
+}
+```
+
+The AI brief is always labelled with its data sources in metadata. Cached briefs carry the `DataSources` snapshot from when they were generated.
+
+---
+
+## AI brief layer (v0.1.1)
+
+A provider-agnostic LLM layer generates daily intelligence briefs. The deterministic engine is the source of truth; the LLM only writes explanatory prose.
+
+Configured via environment variables:
+
+```bash
+LLM_PROVIDER=anthropic          # or: deterministic (default), openai, openrouter, ollama
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-5
+```
+
+If no key is set, the app uses the `DeterministicProvider` which converts the deterministic recommendation into brief format without any API call. Adding a key enables the AI brief with a single button click in the dashboard.
+
+See `AI_STRATEGY.md` for the full provider architecture, retry logic, caching, and token cost model.
+
+---
+
 ## Future AI strategy (v0.3)
 
-Claude is the explanation layer, not the calculation layer. The scoring engine runs first. Claude receives pre-computed scores and returns a natural language brief.
+The LLM is the explanation layer, not the calculation layer. The scoring engine runs first. The LLM receives pre-computed scores and returns a natural language brief.
 
-```
-System prompt:
-"You are Cognix. You explain readiness scores in direct, specific language.
-'Your HRV is 14% below your 30-day baseline' is better than 'your recovery is a bit low.'
-Do not calculate. Do not diagnose. Return JSON: { headline, overall_readout, recovery_insight, ... }"
-```
-
-All Claude output is validated with Zod. If validation fails, the app falls back to deterministic text. The app never crashes because Claude returned unexpected output.
+All LLM output is validated with Zod. If validation fails, the app retries once with a repair prompt, then falls back to deterministic text. The app never shows nothing.
 
 ---
 

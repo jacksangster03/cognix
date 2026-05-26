@@ -1,15 +1,18 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { FlaskConical } from "lucide-react"
 import { ModeBadge } from "./ModeBadge"
 import { APP_META } from "@/lib/constants"
 import type { ReadinessScores, Mode } from "@/lib/types"
+import type { DataSources } from "@/lib/ai/brief-schema"
 
 interface ReadinessHeroProps {
   scores: ReadinessScores
   mode: Mode
   headline: string
   isDemo?: boolean
+  dataSources?: DataSources
 }
 
 function scoreColour(score: number): string {
@@ -55,7 +58,10 @@ function ScoreRing({ score }: { score: number }) {
   )
 }
 
-export function ReadinessHero({ scores, mode, headline, isDemo }: ReadinessHeroProps) {
+export function ReadinessHero({ scores, mode, headline, isDemo, dataSources }: ReadinessHeroProps) {
+  const mockBiometrics = dataSources?.whoop === "mock"
+  const realCheckin = dataSources?.checkin === "user"
+
   return (
     <div className="px-6 py-6 border-b border-zinc-800">
       {/* Title row */}
@@ -63,11 +69,16 @@ export function ReadinessHero({ scores, mode, headline, isDemo }: ReadinessHeroP
         <h1 className="text-sm font-semibold tracking-widest text-zinc-400 uppercase">
           {APP_META.name}
         </h1>
-        {isDemo && (
+        {mockBiometrics ? (
+          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-amber-800/50 text-amber-500/70 bg-amber-950/20">
+            <FlaskConical size={9} />
+            {realCheckin ? "manual + mock biometrics" : "demo mode"}
+          </span>
+        ) : isDemo ? (
           <span className="text-[10px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-500">
             Demo mode
           </span>
-        )}
+        ) : null}
       </div>
       <p className="text-xs text-zinc-600 mb-5">{APP_META.tagline}</p>
 
