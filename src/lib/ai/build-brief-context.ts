@@ -12,12 +12,23 @@
 import { getACWR, determineMode } from "@/lib/scoring"
 import { buildConfidence } from "@/lib/confidence"
 import { buildDailyRecommendation } from "@/lib/recommendations"
+import {
+  calculateWeeklySetsByMuscleGroup,
+  calculateMuscleCoverageScore,
+  getMuscleGroupGaps,
+  findOverrepresentedMuscleGroups,
+  getTrainingConflictsForToday,
+  getDaysSinceLastSession,
+  getWeeklySessionCount,
+} from "@/lib/training"
+import { getMuscleGroupLabel } from "@/lib/exercise-map"
 import type { MockWhoopDay, DailyCheckIn, TrainingSession, ReadinessScores, UserSettings } from "@/lib/types"
 import type {
   BriefContext,
   DataSources,
   ProvenanceFlags,
   DataStateLabel,
+  TrainingIntelligence,
 } from "./brief-schema"
 
 export interface DataSourceFlags {
@@ -87,6 +98,29 @@ export function buildBriefContext(
   const deterministic_rec = buildDailyRecommendation(scores, checkin, whoop, sessions, settings)
   const data_confidence = buildConfidence(whoop, checkin, sessions, !!settings.name)
 
+  // Training intelligence
+  const weeklySets = calculateWeeklySetsByMuscleGroup(sessions)
+  const coverageScore = calculateMuscleCoverageScore(weeklySets)
+  const gaps = getMuscleGroupGaps(weeklySets)
+  const overrep = findOverrepresentedMuscleGroups(weeklySets)
+  const conflicts = getTrainingConflictsForToday(sessions, date)
+
+  const training_intelligence: TrainingIntelligence = {
+    coverage_score: coverageScore,
+    missing_groups: gaps.map((g) => g.label),
+    overrepresented_groups: overrep.map((g) => getMuscleGroupLabel(g)),
+    top_deficit: gaps.length > 0
+      ? {
+          group: gaps[0].label,
+          deficit_sets: gaps[0].deficit,
+          suggestion: gaps[0].suggestion,
+        }
+      : null,
+    conflicts_today: conflicts.map((c) => ({ group: c.label, hours_ago: c.hoursAgo })),
+    days_since_last_session: getDaysSinceLastSession(sessions),
+    weekly_session_count: getWeeklySessionCount(sessions),
+  }
+
   const data_sources: DataSources = {
     whoop: whoop !== null ? (whoopIsReal ? "real" : "mock") : "missing",
     checkin: checkin !== null ? (checkinFromDemo ? "demo" : "user") : "missing",
@@ -113,6 +147,7 @@ export function buildBriefContext(
       acute_load: Math.round(acute),
       chronic_load: Math.round(chronic),
     },
+    training_intelligence,
     settings: {
       goal_phase: settings.goal_phase,
       protein_target_g: settings.protein_target_g,

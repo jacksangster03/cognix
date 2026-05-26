@@ -9,6 +9,7 @@ import { DailyBriefCard } from "@/components/dashboard/DailyBriefCard"
 import { TodayProtocol } from "@/components/dashboard/TodayProtocol"
 import { WhyCookedCard } from "@/components/dashboard/WhyCookedCard"
 import { DataConfidenceCard } from "@/components/dashboard/DataConfidenceCard"
+import { TrainingIntelligenceCard } from "@/components/dashboard/TrainingIntelligenceCard"
 import { QuickActions } from "@/components/dashboard/QuickActions"
 import { TrendStrip } from "@/components/dashboard/TrendStrip"
 import { getTodayMockWhoop, MOCK_WHOOP_HISTORY } from "@/lib/mock-whoop"
@@ -189,6 +190,7 @@ export default function DashboardPage() {
 
         {/* Brief + protocol */}
         <DailyBriefCard recommendation={recommendation} briefContext={briefContext} />
+        <TrainingIntelligenceCard intelligence={briefContext.training_intelligence} />
         <TodayProtocol recommendation={recommendation} />
         <WhyCookedCard recommendation={recommendation} />
 

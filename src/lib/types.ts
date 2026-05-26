@@ -116,6 +116,7 @@ export interface TrainingSession {
   rpe: number                        // 1-10
   muscle_groups: MuscleGroup[]
   exercises_freeform?: string        // raw text log
+  parsed_exercises?: import("./exercise-parser").ParsedExercise[]
   notes?: string
   pain_score?: number                // 0-10
 

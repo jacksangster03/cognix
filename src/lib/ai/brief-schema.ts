@@ -115,6 +115,16 @@ export interface WhoopSummary {
   resting_heart_rate: number
 }
 
+export interface TrainingIntelligence {
+  coverage_score: number              // 0-100
+  missing_groups: string[]            // muscle group names
+  overrepresented_groups: string[]
+  top_deficit: { group: string; deficit_sets: number; suggestion: string } | null
+  conflicts_today: { group: string; hours_ago: number }[]
+  days_since_last_session: number
+  weekly_session_count: number
+}
+
 export interface BriefContext {
   date: string
   mode: Mode
@@ -126,6 +136,7 @@ export interface BriefContext {
     acute_load: number
     chronic_load: number
   }
+  training_intelligence: TrainingIntelligence
   settings: {
     goal_phase: string
     protein_target_g: number
@@ -161,6 +172,19 @@ export const BriefContextSchema = z.object({
     acwr: z.number(),
     acute_load: z.number(),
     chronic_load: z.number(),
+  }),
+  training_intelligence: z.object({
+    coverage_score: z.number(),
+    missing_groups: z.array(z.string()),
+    overrepresented_groups: z.array(z.string()),
+    top_deficit: z.object({
+      group: z.string(),
+      deficit_sets: z.number(),
+      suggestion: z.string(),
+    }).nullable(),
+    conflicts_today: z.array(z.object({ group: z.string(), hours_ago: z.number() })),
+    days_since_last_session: z.number(),
+    weekly_session_count: z.number(),
   }),
   settings: z.object({
     goal_phase: z.string(),
