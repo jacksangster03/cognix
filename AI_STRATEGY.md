@@ -147,38 +147,48 @@ Conversational interface. LLM with function calling against Supabase. Read-only 
 
 ## Data provenance in the brief
 
-Every brief carries a `DataSources` object describing the provenance of each signal:
+Cognix makes a precise distinction between four concepts that are often conflated. Getting this right matters because labelling a user's real check-in as "demo data" is inaccurate and erodes trust.
 
-```typescript
-interface DataSources {
-  whoop: "mock" | "real" | "missing"
-  checkin: "user" | "demo" | "missing"
-  training: "user" | "demo" | "missing"
-  nutrition: "rough_user" | "demo" | "missing"
-}
+| Concept | Meaning | Flag |
+|---|---|---|
+| Demo mode | The settings toggle is on; seeded example data is loaded | `provenance.isDemoMode` |
+| Mock biometrics | WHOOP-style data is simulated; no real wearable connected | `provenance.usesMockBiometrics` |
+| Demo history | Check-in and training data are from seeded mock history | `provenance.usesDemoHistory` |
+| User logs | The user has typed real check-ins or sessions | `provenance.hasUserCheckIn / hasUserTraining` |
+
+`DataSources` tags each signal individually. `ProvenanceFlags` distils the combination into named booleans. `getDataStateLabel()` (in `build-brief-context.ts`) maps flags to a single canonical `DataStateLabel`:
+
+```
+"Demo mode"                    — isDemoMode=true
+"Demo history + mock biometrics" — usesDemoHistory && usesMockBiometrics && !isDemoMode
+"Manual logs + mock biometrics"  — hasUserCheckIn && usesMockBiometrics && !usesDemoHistory
+"Live personal data"             — !usesMockBiometrics (real WHOOP, v0.4+)
+"Limited data"                   — no WHOOP, no check-in, no demo
 ```
 
-**How provenance is determined** (in `build-brief-context.ts`):
+### How the prompt uses provenance
 
-- `whoop: "mock"` — all WHOOP data in v0.1 comes from `mock-whoop.ts`. Switches to `"real"` in v0.4 when `whoopIsReal: true` is passed to `buildBriefContext`.
-- `checkin: "user"` — the check-in was logged by the user into localStorage. `"demo"` when demo mode is on and the data comes from `MOCK_CHECKIN_HISTORY`.
-- `training: "user"` — sessions were logged by the user. `"demo"` when demo mode on and no real sessions exist.
-- `nutrition: "rough_user"` — derived from a user check-in (not tracked calories, still their data). `"demo"` when from mock history.
+`buildUserPrompt()` generates a distinct caveat instruction for each state:
 
-`is_demo` is `true` if demo mode is on, or if `whoop === "mock"`, or if `checkin === "demo"`.
+- `isDemoMode=true` → tells the model this is a product demonstration; scores should not be interpreted as live physiological readings.
+- `usesDemoHistory && usesMockBiometrics && !isDemoMode` → tells the model both history and biometrics are seeded.
+- `usesMockBiometrics && !usesDemoHistory` → tells the model the user's manual logs are real, but WHOOP readings are simulated. Instructs the model NOT to use the phrase "demo mode".
 
-### How the model uses this
+The caveat goes only into `data_confidence_note`. No other field repeats it.
 
-If `is_demo` is true or `data_sources.whoop === "mock"`, the system prompt instructs the model to write an honest note in `data_confidence_note` that the brief is based on mock biometric data and should be treated as a product demonstration. No other field repeats this caveat.
+### How the UI uses provenance
 
-### How the UI uses this
+- **ReadinessHero**: amber chip showing the `DataStateLabel` (hidden for "Live personal data")
+- **Dashboard notice**: one-sentence amber box below the page header with state-specific detail
+- **DailyBriefCard header**: amber badge with the `DataStateLabel`
+- **DailyBriefCard body**: `ProvenanceNotice` component with precise, state-specific prose
 
-- **ReadinessHero**: amber "manual + mock biometrics" or "demo mode" chip
-- **Dashboard**: amber notice chip below the page header
-- **DailyBriefCard header**: small "mock data" badge
-- **DailyBriefCard body**: amber callout panel with full explanation
+All indicators disappear when `provenance.usesMockBiometrics=false` and `provenance.usesDemoHistory=false`. The v0.4 migration is one flag: pass `whoopIsReal: true` to `buildBriefContext`.
 
-All indicators disappear when `data_sources.whoop === "real"`.
+### `is_demo` in metadata vs. in context
+
+- `BriefMetadata.is_demo` = any non-real data was present (`usesMockBiometrics || usesDemoHistory`). Used by analytics and caching.
+- `BriefContext` no longer has a top-level `is_demo`. The explicit `provenance` flags replace it with precise semantics.
 
 ---
 

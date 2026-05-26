@@ -18,7 +18,7 @@ import { buildDailyRecommendation } from "@/lib/recommendations"
 import { buildConfidence } from "@/lib/confidence"
 import { DEFAULT_SETTINGS } from "@/lib/constants"
 import { loadSettings, loadTodayCheckIn, loadRecentSessions, loadDemoMode } from "@/lib/storage"
-import { buildBriefContext } from "@/lib/ai/build-brief-context"
+import { buildBriefContext, getDataStateLabel } from "@/lib/ai/build-brief-context"
 import { FlaskConical } from "lucide-react"
 
 function msToHours(ms: number): string {
@@ -92,8 +92,7 @@ export default function DashboardPage() {
         scores={scores}
         mode={mode}
         headline={recommendation.headline}
-        isDemo={demoMode}
-        dataSources={briefContext.data_sources}
+        provenance={briefContext.provenance}
       />
 
       <div className="px-6 py-4 space-y-5 pb-24 lg:pb-6">
@@ -102,15 +101,27 @@ export default function DashboardPage() {
           subtitle={`${settings.name ? `Hi ${settings.name}.` : ""} Here is your daily readiness report.`}
         />
 
-        {/* Data source chip */}
-        {briefContext.data_sources.whoop === "mock" && (
-          <div className="flex items-center gap-1.5 text-[10px] text-amber-500/80 bg-amber-950/30 border border-amber-800/40 rounded-md px-2.5 py-1.5">
-            <FlaskConical size={11} className="flex-shrink-0" />
-            {briefContext.data_sources.checkin === "user"
-              ? "Manual logs + mock biometrics: your check-in data is real, but biometric readings are simulated."
-              : "Demo biometrics: all data including biometric readings is currently simulated."}
-          </div>
-        )}
+        {/* Data source notice */}
+        {(briefContext.provenance.usesMockBiometrics || briefContext.provenance.usesDemoHistory) && (() => {
+          const p = briefContext.provenance
+          const label = getDataStateLabel(p)
+          let detail: string
+          if (p.isDemoMode) {
+            detail = "Demo mode: check-in history, training sessions and biometric readings are all seeded demo data. Go to Settings to use your own data."
+          } else if (p.usesDemoHistory && p.usesMockBiometrics) {
+            detail = "Demo history and mock biometrics: session and check-in data are examples; WHOOP readings are simulated."
+          } else if (p.usesMockBiometrics && !p.usesDemoHistory) {
+            detail = "Your check-ins and sessions are real. Recovery, HRV and sleep readings are simulated until a wearable is connected."
+          } else {
+            detail = label
+          }
+          return (
+            <div className="flex items-start gap-1.5 text-[10px] text-amber-500/80 bg-amber-950/30 border border-amber-800/40 rounded-md px-2.5 py-1.5">
+              <FlaskConical size={11} className="flex-shrink-0 mt-0.5" />
+              <span>{detail}</span>
+            </div>
+          )
+        })()}
 
         {/* Metric tiles */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

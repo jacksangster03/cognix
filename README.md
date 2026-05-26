@@ -260,40 +260,78 @@ A rough answer every day for 30 days beats a precise answer for 3 days.
 
 ---
 
-## Data provenance: what is real vs. mock in v0.1
+## Data provenance: four distinct states
 
-Cognix is transparent about which signals are real and which are simulated. Every data signal is tagged with its provenance in the `DataSources` object, which appears in the brief context and in cached briefs.
+Cognix separates four concepts that are often conflated:
 
-| Signal | v0.1 status | When it becomes real |
+| Concept | Meaning | TypeScript flag |
 |---|---|---|
-| WHOOP recovery score | Mock (`mock-whoop.ts`) | v0.4: WHOOP OAuth |
-| HRV, RHR, sleep data | Mock (`mock-whoop.ts`) | v0.4: WHOOP OAuth |
-| Daily check-in (wellbeing, nutrition, caffeine) | Real user data if logged, demo if not | Immediate: log a check-in |
-| Training sessions | Real user data if logged, demo if not | Immediate: log a session |
-| Readiness score | Deterministic from above signals | Always deterministic |
+| Demo mode | Settings toggle is on; the app loads seeded example data | `provenance.isDemoMode` |
+| Mock biometrics | WHOOP-style data is simulated; no real wearable connected | `provenance.usesMockBiometrics` |
+| Demo history | Check-in and training data from seeded mock history, not the user's own logs | `provenance.usesDemoHistory` |
+| User logs | The user has typed real check-ins or sessions into the app | `provenance.hasUserCheckIn`, `provenance.hasUserTraining` |
+
+### Data state labels
+
+The app reduces these flags to one of five canonical labels, computed by `getDataStateLabel()`:
+
+| Label | When it appears |
+|---|---|
+| Demo mode | `isDemoMode=true` (toggle on; everything is seeded) |
+| Demo history + mock biometrics | Demo history active but toggle is off (edge case) |
+| Manual logs + mock biometrics | User has logged real check-ins/sessions but WHOOP is not yet connected |
+| Live personal data | Real WHOOP connected (v0.4+) and user has their own logs |
+| Limited data | No demo mode, no WHOOP, no check-ins |
+
+### Why this matters
+
+"Demo mode" and "mock biometrics" are not the same thing. A user who turns off demo mode and starts logging their own check-ins has real subjective data, even though the biometric signals (recovery, HRV, sleep) are still simulated. The app must communicate this accurately rather than labelling their real effort as "demo data".
+
+### Signal status in v0.1
+
+| Signal | Status | When it becomes real |
+|---|---|---|
+| WHOOP recovery, HRV, RHR, sleep | Mock (`mock-whoop.ts`) | v0.4: WHOOP OAuth |
+| Daily check-in (wellbeing, nutrition, caffeine) | Real if user logs it, demo otherwise | Immediate |
+| Training sessions | Real if user logs it, demo otherwise | Immediate |
+| Readiness score | Always deterministic from above signals | Always |
 
 ### UI indicators
 
-The app shows a persistent indicator wherever mock biometric data is powering the readiness score:
+| Location | What appears |
+|---|---|
+| `ReadinessHero` header | Amber chip with the precise `DataStateLabel` |
+| Dashboard body | Amber notice box with one sentence of explanation |
+| `DailyBriefCard` header | Amber badge showing the `DataStateLabel` |
+| `DailyBriefCard` body | Amber callout with precise, state-specific text |
 
-- **Header chip**: "manual + mock biometrics" or "demo mode" (amber, small)
-- **Brief card badge**: "mock data" chip on the brief card header
-- **Brief card notice** (when expanded): amber callout explaining exactly which signals are mock and why
+All indicators disappear when `provenance.usesMockBiometrics=false` and `provenance.usesDemoHistory=false`. To switch to real WHOOP in v0.4: pass `whoopIsReal: true` to `buildBriefContext`.
 
-These indicators disappear automatically when real WHOOP data is connected in v0.4 (set `whoopIsReal: true` in `buildBriefContext`).
-
-### DataSources type
+### Types
 
 ```typescript
 interface DataSources {
-  whoop: "mock" | "real" | "missing"       // "real" from v0.4
-  checkin: "user" | "demo" | "missing"     // "user" as soon as you log a check-in
-  training: "user" | "demo" | "missing"    // "user" as soon as you log a session
+  whoop: "mock" | "real" | "missing"
+  checkin: "user" | "demo" | "missing"
+  training: "user" | "demo" | "missing"
   nutrition: "rough_user" | "demo" | "missing"
 }
-```
 
-The AI brief is always labelled with its data sources in metadata. Cached briefs carry the `DataSources` snapshot from when they were generated.
+interface ProvenanceFlags {
+  isDemoMode: boolean        // settings toggle
+  usesMockBiometrics: boolean // whoop !== "real"
+  usesDemoHistory: boolean   // checkin or training === "demo"
+  hasUserCheckIn: boolean    // checkin === "user"
+  hasUserTraining: boolean   // training === "user"
+}
+
+type DataStateLabel =
+  | "Demo mode"
+  | "Demo history + mock biometrics"
+  | "Manual logs + mock biometrics"
+  | "Live personal data"
+  | "Limited data"
+```
 
 ---
 

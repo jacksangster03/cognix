@@ -26,13 +26,22 @@ export const CognixBriefSchema = z.object({
 export type CognixBrief = z.infer<typeof CognixBriefSchema>
 
 // ─── Data source tags ─────────────────────────────────────────────────────────
-// Every signal that feeds the brief is tagged with its provenance.
-// "mock"      = generated from mock-whoop.ts, not a real device
-// "real"      = from an authenticated wearable API (v0.4+)
-// "user"      = user typed it into a check-in form
-// "rough_user"= user typed a rough band (not tracked calories), still their data
-// "demo"      = seeded from MOCK_CHECKIN_HISTORY / MOCK_TRAINING_HISTORY
-// "missing"   = signal not present at all
+// Tags the provenance of each signal that feeds the brief.
+//
+// whoop:
+//   "mock"     = generated from mock-whoop.ts; no real wearable connected
+//   "real"     = from authenticated WHOOP API (v0.4+)
+//   "missing"  = no WHOOP data at all (demo mode off, no wearable)
+//
+// checkin / training:
+//   "user"      = user typed this into the check-in or training form (localStorage)
+//   "demo"      = seeded from MOCK_CHECKIN_HISTORY / MOCK_TRAINING_HISTORY
+//   "missing"   = no data present
+//
+// nutrition:
+//   "rough_user" = user entered a rough band in the check-in form
+//   "demo"       = from mock history
+//   "missing"    = no check-in data
 
 export interface DataSources {
   whoop: "mock" | "real" | "missing"
@@ -40,6 +49,35 @@ export interface DataSources {
   training: "user" | "demo" | "missing"
   nutrition: "rough_user" | "demo" | "missing"
 }
+
+// ─── Provenance flags ─────────────────────────────────────────────────────────
+// Explicit booleans derived from DataSources. Components use these for UI
+// labels and the prompt uses them for precise caveat text.
+//
+// isDemoMode:        The demo mode setting toggle is on.
+// usesMockBiometrics: WHOOP data is simulated (always true in v0.1 when WHOOP present).
+//                    False when real WHOOP is connected in v0.4.
+// usesDemoHistory:   Check-in or training data comes from seeded demo history.
+// hasUserCheckIn:    A user-typed check-in is powering the subjective scores.
+// hasUserTraining:   User-logged sessions are powering ACWR and muscle coverage.
+
+export interface ProvenanceFlags {
+  isDemoMode: boolean
+  usesMockBiometrics: boolean
+  usesDemoHistory: boolean
+  hasUserCheckIn: boolean
+  hasUserTraining: boolean
+}
+
+// ─── Data state label ─────────────────────────────────────────────────────────
+// The single human-readable label summarising the provenance state.
+
+export type DataStateLabel =
+  | "Demo mode"
+  | "Demo history + mock biometrics"
+  | "Manual logs + mock biometrics"
+  | "Live personal data"
+  | "Limited data"
 
 // ─── Brief metadata ───────────────────────────────────────────────────────────
 
@@ -49,6 +87,9 @@ export interface BriefMetadata {
   generated_at: string
   fallback_used: boolean
   cached: boolean
+  // is_demo: any non-real data was present when the brief was generated.
+  // Distinct from isDemoMode (toggle) — a brief generated with real check-ins
+  // but mock WHOOP has is_demo=true but isDemoMode=false.
   is_demo: boolean
   data_sources: DataSources
 }
@@ -60,7 +101,7 @@ export interface CachedBrief {
   brief: CognixBrief
   metadata: BriefMetadata
   data_sources: DataSources
-  is_demo: boolean
+  provenance: ProvenanceFlags
 }
 
 // ─── Brief context (sent to /api/brief) ──────────────────────────────────────
@@ -95,8 +136,8 @@ export interface BriefContext {
   deterministic_rec: DailyRecommendation
   data_confidence: DataConfidence
   whoop_summary: WhoopSummary | null
-  is_demo: boolean
   data_sources: DataSources
+  provenance: ProvenanceFlags
 }
 
 export const BriefContextSchema = z.object({
@@ -131,11 +172,17 @@ export const BriefContextSchema = z.object({
   deterministic_rec: z.any(),
   data_confidence: z.any(),
   whoop_summary: z.any().nullable(),
-  is_demo: z.boolean(),
   data_sources: z.object({
     whoop: z.enum(["mock", "real", "missing"]),
     checkin: z.enum(["user", "demo", "missing"]),
     training: z.enum(["user", "demo", "missing"]),
     nutrition: z.enum(["rough_user", "demo", "missing"]),
+  }),
+  provenance: z.object({
+    isDemoMode: z.boolean(),
+    usesMockBiometrics: z.boolean(),
+    usesDemoHistory: z.boolean(),
+    hasUserCheckIn: z.boolean(),
+    hasUserTraining: z.boolean(),
   }),
 })

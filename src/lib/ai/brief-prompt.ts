@@ -15,7 +15,12 @@ STRICT RULES:
 8. Tone: direct, evidence-informed, like a knowledgeable coach who respects your intelligence.
 9. The "headline" field must be a single sentence that captures today's key message.
 10. The "one_priority" field must be a single actionable instruction for today.
-11. If is_demo is true or data_sources.whoop is "mock", write a single honest sentence in "data_confidence_note" noting that biometric data is currently mock/demo data, and that the readiness interpretation should be treated as a product demonstration rather than a live physiological reading. Do not repeat this caveat in other fields.
+11. The "data_confidence_note" field must accurately reflect the data provenance state:
+    - If provenance.isDemoMode is true: note that this brief uses seeded demo history and mock biometrics, and should be treated as a product demonstration.
+    - If provenance.usesDemoHistory is true but isDemoMode is false: note that session and check-in history is seeded demo data, and biometrics are also simulated.
+    - If provenance.usesMockBiometrics is true but provenance.usesDemoHistory is false: note that recovery, HRV and sleep data are currently simulated, but the user's manual logs are real. Do not call this "demo mode".
+    - If all data is real (provenance.usesMockBiometrics is false): write a brief note on data completeness only.
+    Keep the note to one or two sentences. Do not repeat the caveat in any other field.
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly these fields, no other keys, no markdown wrapping:
@@ -34,11 +39,18 @@ Return ONLY valid JSON with exactly these fields, no other keys, no markdown wra
 }`
 
 export function buildUserPrompt(context: BriefContext): string {
-  const demoNote = context.is_demo || context.data_sources.whoop === "mock"
-    ? `\nIMPORTANT: This brief is based on mock/demo biometric data (data_sources.whoop = "${context.data_sources.whoop}", is_demo = ${context.is_demo}). Write the "data_confidence_note" field to clearly but briefly note this. The brief should still be useful and not entirely dismissed.`
-    : ""
+  const { provenance } = context
 
-  return `Here is today's health context for ${context.settings.name || "the user"}. Write the Cognix daily brief.${demoNote}
+  let caveatInstruction = ""
+  if (provenance.isDemoMode) {
+    caveatInstruction = `\nDATA NOTE: This brief is running in demo mode (provenance.isDemoMode=true). Both the check-in/training history and the WHOOP biometrics are seeded demo data. In "data_confidence_note", state clearly that this is a product demonstration and scores should not be interpreted as live physiological readings.`
+  } else if (provenance.usesDemoHistory && provenance.usesMockBiometrics) {
+    caveatInstruction = `\nDATA NOTE: Check-in and training data are from seeded demo history, and WHOOP biometrics are mock (provenance.usesDemoHistory=true, provenance.usesMockBiometrics=true). In "data_confidence_note", note both issues clearly.`
+  } else if (provenance.usesMockBiometrics && !provenance.usesDemoHistory) {
+    caveatInstruction = `\nDATA NOTE: The user's check-in and training logs are real (provenance.hasUserCheckIn=${provenance.hasUserCheckIn}, provenance.hasUserTraining=${provenance.hasUserTraining}), but WHOOP recovery, HRV, and sleep data are currently simulated because no real wearable is connected (provenance.usesMockBiometrics=true). In "data_confidence_note", acknowledge the mock biometrics specifically. Do NOT say "demo mode" — the user's manual logs are real.`
+  }
+
+  return `Here is today's health context for ${context.settings.name || "the user"}. Write the Cognix daily brief.${caveatInstruction}
 
 \`\`\`json
 ${JSON.stringify(context, null, 2)}

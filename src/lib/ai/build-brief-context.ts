@@ -1,27 +1,58 @@
 // ─── BriefContext builder ─────────────────────────────────────────────────────
-// Assembles all pre-calculated signals into the BriefContext shape that is
-// sent to /api/brief. Called from client components after the deterministic
-// engine has already run.
+// Assembles all pre-calculated signals into the BriefContext shape sent to
+// /api/brief. Also exports getDataStateLabel for consistent UI labels across
+// all components.
 //
-// DataSourceFlags documents the provenance of each input signal:
-//   isDemoMode     - the app's demo mode toggle is on
-//   whoopIsReal    - set to true in v0.4 when WHOOP OAuth is connected;
-//                    false in v0.1 (all WHOOP data is mock)
-//   checkinFromDemo - the checkin was pulled from MOCK_CHECKIN_HISTORY
-//   sessionsFromDemo - sessions were pulled from MOCK_TRAINING_HISTORY
+// DataSourceFlags — caller-supplied facts about data origin:
+//   isDemoMode      - the demo mode setting toggle is on
+//   whoopIsReal     - false in v0.1; set true in v0.4 when WHOOP OAuth connects
+//   checkinFromDemo - the checkin came from MOCK_CHECKIN_HISTORY
+//   sessionsFromDemo- sessions came from MOCK_TRAINING_HISTORY
 
 import { getACWR, determineMode } from "@/lib/scoring"
 import { buildConfidence } from "@/lib/confidence"
 import { buildDailyRecommendation } from "@/lib/recommendations"
 import type { MockWhoopDay, DailyCheckIn, TrainingSession, ReadinessScores, UserSettings } from "@/lib/types"
-import type { BriefContext, DataSources } from "./brief-schema"
+import type {
+  BriefContext,
+  DataSources,
+  ProvenanceFlags,
+  DataStateLabel,
+} from "./brief-schema"
 
 export interface DataSourceFlags {
   isDemoMode: boolean
-  whoopIsReal?: boolean       // default false; flip to true in v0.4
+  whoopIsReal?: boolean       // default false; set true in v0.4
   checkinFromDemo?: boolean   // true when using MOCK_CHECKIN_HISTORY
   sessionsFromDemo?: boolean  // true when using MOCK_TRAINING_HISTORY
 }
+
+// ─── Data state label ─────────────────────────────────────────────────────────
+// Returns the single canonical label for the current data provenance state.
+// Shared by ReadinessHero, DailyBriefCard, and the dashboard notice chip.
+
+export function getDataStateLabel(p: ProvenanceFlags): DataStateLabel {
+  // Real wearable connected — all data is live (v0.4+)
+  if (!p.usesMockBiometrics && (p.hasUserCheckIn || p.hasUserTraining)) {
+    return "Live personal data"
+  }
+  // Demo mode toggle is on: whole app is seeded with demo history + mock WHOOP
+  if (p.isDemoMode) {
+    return "Demo mode"
+  }
+  // Demo history active but demo toggle is somehow off (edge case in development)
+  if (p.usesDemoHistory && p.usesMockBiometrics) {
+    return "Demo history + mock biometrics"
+  }
+  // User has logged real check-ins/training but WHOOP is still mock
+  if ((p.hasUserCheckIn || p.hasUserTraining) && p.usesMockBiometrics) {
+    return "Manual logs + mock biometrics"
+  }
+  // No useful data at all
+  return "Limited data"
+}
+
+// ─── Main builder ─────────────────────────────────────────────────────────────
 
 export function buildBriefContext(
   date: string,
@@ -60,12 +91,16 @@ export function buildBriefContext(
     whoop: whoop !== null ? (whoopIsReal ? "real" : "mock") : "missing",
     checkin: checkin !== null ? (checkinFromDemo ? "demo" : "user") : "missing",
     training: sessions.length > 0 ? (sessionsFromDemo ? "demo" : "user") : "missing",
-    nutrition: checkin !== null
-      ? (checkinFromDemo ? "demo" : "rough_user")
-      : "missing",
+    nutrition: checkin !== null ? (checkinFromDemo ? "demo" : "rough_user") : "missing",
   }
 
-  const is_demo = isDemoMode || data_sources.whoop === "mock" || data_sources.checkin === "demo"
+  const provenance: ProvenanceFlags = {
+    isDemoMode,
+    usesMockBiometrics: data_sources.whoop === "mock",
+    usesDemoHistory: data_sources.checkin === "demo" || data_sources.training === "demo",
+    hasUserCheckIn: data_sources.checkin === "user",
+    hasUserTraining: data_sources.training === "user",
+  }
 
   return {
     date,
@@ -97,7 +132,7 @@ export function buildBriefContext(
           resting_heart_rate: whoop.resting_heart_rate,
         }
       : null,
-    is_demo,
     data_sources,
+    provenance,
   }
 }

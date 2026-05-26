@@ -10,7 +10,16 @@ import type { BriefContext } from "@/lib/ai/brief-schema"
 function buildDeterministicBrief(context: BriefContext): Record<string, string> {
   const { deterministic_rec: rec, scores, data_confidence, settings } = context
 
-  const confidenceNote =
+  const p = context.provenance
+  const mockNote = p?.isDemoMode
+    ? "Demo mode active: scores are based on seeded demo history and mock biometrics, not live data."
+    : p?.usesDemoHistory && p?.usesMockBiometrics
+      ? "Demo history and mock biometrics in use: connect a wearable and log your own check-ins for a live brief."
+      : p?.usesMockBiometrics
+        ? "Your manual logs are real, but WHOOP recovery and sleep data are simulated until a wearable is connected."
+        : null
+
+  const confidenceNote = mockNote ?? (
     data_confidence.confidence_label === "Low"
       ? "Limited data available. Log a check-in and connect WHOOP to improve accuracy."
       : data_confidence.confidence_label === "Moderate"
@@ -18,6 +27,7 @@ function buildDeterministicBrief(context: BriefContext): Record<string, string> 
         : data_confidence.confidence_label === "High"
           ? "Most signals present. Recommendations are reliable."
           : "All signals present. Recommendations are highly accurate."
+  )
 
   const overallReadout = [
     `Readiness score ${scores.overall}/100, mode ${context.mode}.`,

@@ -5,7 +5,14 @@ import { ChevronDown, ChevronUp, Sparkles, RefreshCw, FlaskConical } from "lucid
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { loadCachedBrief, saveCachedBrief } from "@/lib/storage"
 import type { DailyRecommendation } from "@/lib/types"
-import type { CognixBrief, BriefMetadata, BriefContext, CachedBrief, DataSources } from "@/lib/ai/brief-schema"
+import type {
+  CognixBrief,
+  BriefMetadata,
+  BriefContext,
+  CachedBrief,
+  ProvenanceFlags,
+} from "@/lib/ai/brief-schema"
+import { getDataStateLabel } from "@/lib/ai/build-brief-context"
 
 interface DailyBriefCardProps {
   recommendation: DailyRecommendation
@@ -21,9 +28,7 @@ type BriefState =
 function mapRecToBrief(rec: DailyRecommendation): CognixBrief {
   return {
     headline: rec.headline,
-    overall_readout: rec.reasons.length > 0
-      ? rec.reasons.join(". ") + "."
-      : rec.headline,
+    overall_readout: rec.reasons.length > 0 ? rec.reasons.join(". ") + "." : rec.headline,
     training_recommendation: rec.training,
     nutrition_guidance: rec.nutrition,
     hydration_guidance: rec.hydration,
@@ -36,25 +41,45 @@ function mapRecToBrief(rec: DailyRecommendation): CognixBrief {
   }
 }
 
-// ─── Demo data notice ─────────────────────────────────────────────────────────
+// ─── Provenance notice ────────────────────────────────────────────────────────
+// Shown inside the expanded brief. Text is precise: it distinguishes between
+// demo history, mock biometrics, and a mix of the two.
 
-function DemoNotice({ sources }: { sources: DataSources }) {
-  const isFullDemo = sources.checkin === "demo" && sources.whoop === "mock"
-  const isPartialDemo = sources.checkin === "user" && sources.whoop === "mock"
+function ProvenanceNotice({ p }: { p: ProvenanceFlags }) {
+  if (!p.usesMockBiometrics && !p.usesDemoHistory) return null
 
-  if (sources.whoop !== "mock") return null
+  let text: string
+  if (p.isDemoMode) {
+    text =
+      "Demo mode active: this brief uses seeded demo history and mock WHOOP-style biometrics. It is a product demonstration, not a live physiological reading. Go to Settings to turn off demo mode."
+  } else if (p.usesDemoHistory && p.usesMockBiometrics) {
+    text =
+      "Demo history and mock biometrics are active: check-in and training data are seeded examples, and WHOOP recovery and sleep readings are simulated. Connect a real wearable and log your own check-ins for a live brief."
+  } else if (p.usesMockBiometrics && !p.usesDemoHistory) {
+    text =
+      "Mock biometric data: your manual logs (check-ins and training) are real, but recovery, HRV and sleep readings are simulated because no wearable is connected. The subjective scores reflect your actual entries; biometric scores do not. Connect WHOOP in Integrations to switch to live readings."
+  } else {
+    return null
+  }
 
   return (
     <div className="flex items-start gap-2 rounded-md border border-amber-800/40 bg-amber-950/25 px-3 py-2">
       <FlaskConical size={11} className="text-amber-500/80 flex-shrink-0 mt-0.5" />
-      <p className="text-[10px] text-amber-500/80 leading-relaxed">
-        {isPartialDemo
-          ? "Partial demo data: your manual logs are real, but biometric data (recovery, HRV, sleep) is mock until a real wearable is connected."
-          : isFullDemo
-            ? "Demo data active: this brief uses mock WHOOP-style biometrics. Connect a real wearable to get a live physiological reading."
-            : "Biometric data is currently mock. Connect a real wearable in Integrations for a live reading."}
-      </p>
+      <p className="text-[10px] text-amber-500/80 leading-relaxed">{text}</p>
     </div>
+  )
+}
+
+// ─── Header badge ─────────────────────────────────────────────────────────────
+
+function ProvenanceBadge({ p }: { p: ProvenanceFlags }) {
+  if (!p.usesMockBiometrics && !p.usesDemoHistory) return null
+  const label = getDataStateLabel(p)
+  return (
+    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-800/40 text-amber-500/80 font-medium flex items-center gap-1">
+      <FlaskConical size={8} />
+      {label}
+    </span>
   )
 }
 
@@ -65,6 +90,7 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
   const [briefState, setBriefState] = useState<BriefState>({ status: "idle" })
 
   const today = briefContext.date
+  const provenance = briefContext.provenance
 
   useEffect(() => {
     const cached = loadCachedBrief(today)
@@ -95,14 +121,14 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
         brief: data.brief,
         metadata: data.metadata,
         data_sources: briefContext.data_sources,
-        is_demo: briefContext.is_demo,
+        provenance,
       }
       saveCachedBrief(toCache)
       setBriefState({ status: "ready", brief: data.brief, metadata: data.metadata })
     } catch (err) {
       setBriefState({ status: "error", message: String(err) })
     }
-  }, [briefContext, today])
+  }, [briefContext, today, provenance])
 
   const displayBrief: CognixBrief =
     briefState.status === "ready" ? briefState.brief : mapRecToBrief(rec)
@@ -124,12 +150,7 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
               AI
             </span>
           )}
-          {briefContext.data_sources.whoop === "mock" && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-800/40 text-amber-500/80 font-medium flex items-center gap-1">
-              <FlaskConical size={8} />
-              mock data
-            </span>
-          )}
+          <ProvenanceBadge p={provenance} />
           {isCached && (
             <span className="text-[9px] text-zinc-600">cached</span>
           )}
@@ -141,10 +162,8 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
 
       {expanded && (
         <CardContent className="px-4 pb-4 space-y-3">
-          {/* Demo data notice */}
-          <DemoNotice sources={briefContext.data_sources} />
+          <ProvenanceNotice p={provenance} />
 
-          {/* Generate button */}
           {briefState.status === "idle" || briefState.status === "error" ? (
             <div className="space-y-1.5">
               <button
@@ -200,15 +219,9 @@ export function DailyBriefCard({ recommendation: rec, briefContext }: DailyBrief
 }
 
 function BriefSection({
-  label,
-  text,
-  highlight = false,
-  dim = false,
+  label, text, highlight = false, dim = false,
 }: {
-  label: string
-  text: string
-  highlight?: boolean
-  dim?: boolean
+  label: string; text: string; highlight?: boolean; dim?: boolean
 }) {
   return (
     <div>

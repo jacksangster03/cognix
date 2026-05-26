@@ -125,13 +125,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // is_demo in metadata means "any non-real data was present" — derived from provenance flags.
+  const ctxProvenance = (context as { provenance?: { usesMockBiometrics?: boolean; usesDemoHistory?: boolean } }).provenance
+  const isDemo = !!(ctxProvenance?.usesMockBiometrics || ctxProvenance?.usesDemoHistory)
+
   const metadata: BriefMetadata = {
     provider: usedProvider,
     model: usedModel,
     generated_at: new Date().toISOString(),
     fallback_used: fallbackUsed,
     cached: false,
-    is_demo: (context as { is_demo?: boolean }).is_demo ?? false,
+    is_demo: isDemo,
     data_sources: (context as { data_sources?: BriefMetadata["data_sources"] }).data_sources ?? {
       whoop: "missing",
       checkin: "missing",
