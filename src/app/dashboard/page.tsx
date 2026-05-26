@@ -18,6 +18,7 @@ import { buildDailyRecommendation } from "@/lib/recommendations"
 import { buildConfidence } from "@/lib/confidence"
 import { DEFAULT_SETTINGS } from "@/lib/constants"
 import { loadSettings, loadTodayCheckIn, loadRecentSessions, loadDemoMode } from "@/lib/storage"
+import { buildBriefContext } from "@/lib/ai/build-brief-context"
 
 function msToHours(ms: number): string {
   return (ms / 3600000).toFixed(1)
@@ -56,6 +57,9 @@ export default function DashboardPage() {
   const mode = determineMode(scores, checkin)
   const recommendation = buildDailyRecommendation(scores, checkin, whoop, sessions, settings)
   const confidence = buildConfidence(whoop, checkin, sessions, !!settings.name)
+
+  const todayISO = new Date().toISOString().split("T")[0]
+  const briefContext = buildBriefContext(todayISO, scores, checkin, whoop, sessions, settings)
 
   // Build trend data from mock history
   const trendData = MOCK_WHOOP_HISTORY.slice(-14).map((d) => ({
@@ -151,7 +155,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Brief + protocol */}
-        <DailyBriefCard recommendation={recommendation} />
+        <DailyBriefCard recommendation={recommendation} briefContext={briefContext} />
         <TodayProtocol recommendation={recommendation} />
         <WhyCookedCard recommendation={recommendation} />
 

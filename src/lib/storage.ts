@@ -7,6 +7,7 @@ import type {
   TrainingSession,
   Experiment,
 } from "./types"
+import type { CachedBrief } from "@/lib/ai/brief-schema"
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,28 @@ export function loadDemoMode(): boolean {
 
 export function saveDemoMode(enabled: boolean): void {
   safeSet(STORAGE_KEYS.demo_mode, enabled)
+}
+
+// ─── Brief cache ──────────────────────────────────────────────────────────────
+// Caches one brief per day. A new call to /api/brief for the same date returns
+// the cached version from localStorage rather than hitting the API again.
+
+export function loadCachedBrief(date: string): CachedBrief | null {
+  const all = safeGet<CachedBrief[]>(STORAGE_KEYS.brief_cache, [])
+  return all.find((b) => b.date === date) ?? null
+}
+
+export function saveCachedBrief(cached: CachedBrief): void {
+  const all = safeGet<CachedBrief[]>(STORAGE_KEYS.brief_cache, [])
+  const idx = all.findIndex((b) => b.date === cached.date)
+  if (idx >= 0) {
+    all[idx] = cached
+  } else {
+    all.push(cached)
+  }
+  // Keep last 30 days only
+  const trimmed = all.sort((a, b) => a.date.localeCompare(b.date)).slice(-30)
+  safeSet(STORAGE_KEYS.brief_cache, trimmed)
 }
 
 // ─── Clear all data ───────────────────────────────────────────────────────────

@@ -83,6 +83,7 @@ export const STORAGE_KEYS = {
   training_sessions: "cognix:training_sessions",
   experiments: "cognix:experiments",
   demo_mode: "cognix:demo_mode",
+  brief_cache: "cognix:brief_cache",
 } as const
 
 // ─── App metadata ─────────────────────────────────────────────────────────────

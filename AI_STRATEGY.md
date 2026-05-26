@@ -2,127 +2,157 @@
 
 ## Core principle: deterministic code calculates, LLM explains
 
-The readiness score, mode, and all component scores are calculated by pure TypeScript functions. Claude receives these pre-computed outputs and explains them in natural language. Claude never calculates, adjusts, or invents a score.
+The readiness score, mode, and all component scores are calculated by pure TypeScript functions in `src/lib/scoring.ts`. An LLM receives these pre-computed outputs and writes plain-English explanations. The LLM never calculates, adjusts, or invents a score.
 
 This matters for four reasons:
 
-**Trustworthiness:** If Claude says your HRV is fine but TypeScript says it is 22% below baseline, TypeScript wins. The score is deterministic and auditable.
+**Trustworthiness:** If the LLM says your HRV is fine but TypeScript says it is 22% below baseline, TypeScript wins. The score is deterministic and auditable.
 
-**Auditability:** Every score can be traced back to an exact input and a specific formula. This is essential for any regulatory context (SaMD, clinical decision support).
+**Auditability:** Every score can be traced back to an exact input and a specific formula.
 
-**Cost control:** Claude is called once per day per user. It receives pre-computed scores, not raw sensor data. Maximum 800 tokens of context per request.
+**Cost control:** The LLM is called once per day per user on demand. It receives pre-computed scores, not raw sensor data. Results are cached in localStorage for the day.
 
-**Resilience:** If the Claude call fails, the app falls back to deterministic text recommendations. The app never shows nothing.
+**Resilience:** If the LLM call fails, the app falls back to the deterministic provider automatically. The app never shows nothing.
 
 ---
 
-## What Claude receives (v0.3)
+## Provider architecture (implemented in v0.1.1)
+
+Cognix uses a provider-agnostic LLM layer. The active provider is selected via the `LLM_PROVIDER` environment variable. Adding a new provider requires only implementing the `LLMProvider` interface.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `src/lib/llm/types.ts` | `LLMProvider` interface, `LLMPrompt`, `LLMResult` |
+| `src/lib/llm/deterministic.ts` | Converts `DailyRecommendation` to `CognixBrief` format, no API call |
+| `src/lib/llm/anthropic.ts` | Anthropic Messages API via `@anthropic-ai/sdk` |
+| `src/lib/llm/provider.ts` | Reads env vars, returns the correct provider instance |
+| `src/lib/ai/brief-schema.ts` | Zod schema for `CognixBrief`, `BriefContext`, `CachedBrief` |
+| `src/lib/ai/brief-prompt.ts` | System prompt, user prompt builder, repair prompt builder |
+| `src/lib/ai/build-brief-context.ts` | Assembles `BriefContext` from app state |
+| `src/app/api/brief/route.ts` | `POST /api/brief` endpoint with retry and fallback logic |
+
+### Provider selection logic
+
+```
+LLM_PROVIDER env var
+  "anthropic"  → ANTHROPIC_API_KEY present? → AnthropicProvider
+                                            → DeterministicProvider (warning logged)
+  "deterministic" or missing              → DeterministicProvider
+  anything else (openai, openrouter, etc) → DeterministicProvider (warning logged)
+```
+
+### Adding a new provider
+
+1. Create `src/lib/llm/yourprovider.ts` implementing `LLMProvider`
+2. Add a case to the switch in `src/lib/llm/provider.ts`
+3. Add the env var to `.env.example`
+
+---
+
+## API route: POST /api/brief
+
+Accepts a `BriefContext` JSON body. Returns `{ brief: CognixBrief, metadata: BriefMetadata }`.
+
+### Request flow
+
+1. Parse body, validate with `BriefContextSchema`
+2. `getProvider()` returns the active provider
+3. Build system and user prompts via `brief-prompt.ts`
+4. Call `provider.generate(prompt)`
+5. Extract JSON from response (strips markdown fences if present)
+6. Validate with `CognixBriefSchema`
+7. If validation fails: retry once with a repair prompt
+8. If retry fails or the provider throws: use `DeterministicProvider` fallback
+9. Return `{ brief, metadata }` including `provider`, `model`, `generated_at`, `fallback_used`
+
+### Response metadata
 
 ```typescript
-// Context sent to Claude (not raw sensor data)
-interface BriefContext {
-  user: { name: string; goal_phase: string; bodyweight_kg: number }
-  date: string
-  scores: ReadinessScores          // pre-computed, 0-100 each
-  mode: Mode                       // pre-computed
-  whoop_summary: {
-    recovery_score: number
-    hrv_milli: number
-    hrv_pct_vs_baseline: number    // pre-computed deviation
-    sleep_total_hours: number
-    sleep_performance_pct: number
-    strain_score: number
-  }
-  training_summary: {
-    acwr: number                   // pre-computed
-    acwr_status: string
-    last_session_type: string
-    days_since_rest: number
-  }
-  nutrition_summary: {
-    protein_band: string
-    hydration_band: string
-    caffeine_timing: string
-  }
-  deterministic_recommendation: DailyRecommendation  // already computed
+interface BriefMetadata {
+  provider: string       // e.g. "anthropic"
+  model: string          // e.g. "claude-sonnet-4-5"
+  generated_at: string   // ISO datetime
+  fallback_used: boolean
+  cached: boolean        // set by client from localStorage
 }
 ```
 
 ---
 
-## Claude output schema
+## LLM output schema
 
 ```typescript
-const BriefOutputSchema = z.object({
-  headline: z.string().max(80),
-  overall_readout: z.string().max(400),
-  recovery_insight: z.string().max(200),
-  sleep_insight: z.string().max(200),
-  training_recommendation: z.string().max(300),
-  nutrition_guidance: z.string().max(300),
-  supplement_notes: z.string().max(200),
-  one_thing: z.string().max(120),
-  data_completeness: z.array(z.string()),
+const CognixBriefSchema = z.object({
+  headline: z.string().min(10).max(200),
+  overall_readout: z.string().min(20).max(500),
+  training_recommendation: z.string().min(10).max(400),
+  nutrition_guidance: z.string().min(10).max(400),
+  hydration_guidance: z.string().min(10).max(300),
+  caffeine_guidance: z.string().min(10).max(300),
+  supplement_notes: z.string().min(10).max(300),
+  sleep_focus: z.string().min(10).max(300),
+  main_risk: z.string().min(10).max(300),
+  one_priority: z.string().min(10).max(200),
+  data_confidence_note: z.string().min(10).max(300),
 })
 ```
 
-All output is validated with Zod before being stored or displayed. If validation fails, the app uses the deterministic recommendation text instead.
+All LLM output is validated with Zod before storage or display. Validation failure triggers a repair retry, then deterministic fallback. The user always sees a brief.
 
 ---
 
-## System prompt (v0.3)
+## Caching
 
-```
-You are Cognix, a personal health intelligence assistant.
+Generated briefs are cached in localStorage under `cognix:brief_cache` (30-day ring buffer, one entry per date). On dashboard load, the client checks the cache before calling `/api/brief`. If a cached brief for today exists, no API call is made.
 
-Rules:
-- Be direct and specific. "Your HRV is 14% below your 30-day baseline" is better than "your recovery is a bit low."
-- Explain the WHY behind each recommendation, citing the specific data point.
-- Do not give medical advice. Do not diagnose. Do not recommend supplements beyond what the user has already logged.
-- If data is missing, acknowledge it briefly without penalising the score.
-- Tone: coach, not cheerleader. Honest, grounded, motivating without being sycophantic.
-- Length: 200-350 words total across all fields.
+---
 
-Return a JSON object matching the schema provided. No markdown. No explanation outside the JSON.
-```
+## System prompt rules
+
+The system prompt hard-constrains the model to:
+
+- Never calculate or change readiness score or mode
+- Never invent numbers (only reference numbers present in context)
+- Never give medical advice
+- Write in British English
+- No em dashes, no markdown, plain prose only
+- Keep each field to 1-3 sentences
+- Tone: direct, evidence-informed, like a knowledgeable coach
 
 ---
 
 ## Token cost model
 
-| Item | Tokens |
+| Item | Approximate tokens |
 |---|---|
-| System prompt | ~200 |
-| User context | ~400 |
+| System prompt | ~220 |
+| BriefContext (JSON) | ~500 |
 | Expected output | ~350 |
-| Total per brief | ~950 tokens |
+| Total per brief | ~1,070 tokens |
 
-At $3 per million tokens (claude-sonnet-4-6 input) and $15 per million output:
-- Cost per brief: ~$0.0029 (under 0.3 cents)
-- Cost for 100 users daily: ~$0.29/day
+At claude-sonnet-4-5 pricing ($3/M input, $15/M output):
+- Cost per brief: ~$0.0031 (under 0.4 cents)
+- Cost for 100 users daily: ~$0.31/day
+- With localStorage caching, regeneration is rare in practice
 
 ---
 
 ## Future: Ask Cognix (v0.8)
 
-Conversational interface. Claude with function calling. Can query Supabase for specific date ranges, correlations, and experiment outcomes.
-
-Safety boundaries:
-- All function calls read-only. Claude cannot write to the database.
-- Context includes only the authenticated user's data (enforced by RLS).
-- No cross-user data access at any layer.
-- Medical disclaimer appended to every response that mentions symptoms.
+Conversational interface. LLM with function calling against Supabase. Read-only queries only. Context is scoped to the authenticated user (enforced by RLS, not just the prompt). Medical disclaimer appended to every response referencing symptoms.
 
 ---
 
-## No medical claims: implementation
+## No medical claims: enforcement
 
-Every Claude prompt includes:
+Every system prompt includes:
+
 ```
-IMPORTANT: You are a personal performance tool. Do not make medical claims.
-Do not diagnose. Do not advise on medications. If the user reports persistent
-pain (>7/10), significant illness, or a medical condition, advise them to
-seek qualified clinical advice and do not attempt to interpret their symptoms.
+Never give medical advice. Never diagnose. Never prescribe.
+If the user reports pain >= 7/10 or persistent symptoms, the deterministic
+engine has already capped the mode to Rest. Do not attempt to reinterpret this.
 ```
 
-This is enforced in the system prompt, not just the UI disclaimer.
+This is enforced in `brief-prompt.ts`, not just the UI disclaimer.
