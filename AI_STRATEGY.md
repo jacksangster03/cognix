@@ -1,5 +1,95 @@
 # Cognix AI Strategy
 
+## The LLM's exact role
+
+The LLM does exactly four things. Nothing else.
+
+### 1. Parse natural language
+
+Input: "8 reps, fairly easy but felt a little weird in right shoulder"
+
+Output:
+```json
+{
+  "reps": 8,
+  "rir": 3,
+  "difficulty": "easy",
+  "pain_or_discomfort": true,
+  "body_location": "right_shoulder",
+  "severity": null,
+  "requires_followup": true
+}
+```
+
+### 2. Explain deterministic decisions
+
+Inputs: today's readiness score, planned workout, applied adjustment rules, supporting metrics.
+
+Output: "Your upper session remains appropriate because upper-body fatigue is low. The system removed one accessory set because sleep and subjective energy were below baseline."
+
+### 3. Conduct constrained clarification
+
+Examples:
+- "Did you mean 30 kg per dumbbell or total?"
+- "Was that pain or normal muscular effort?"
+- "Did you complete five reps or fail during the fifth?"
+
+### 4. Summarise trends
+
+Example: "Your incline press has progressed for four consecutive exposures, but performance is more variable when it follows weighted dips."
+
+### What the LLM must never do
+
+- Invent or adjust weights or rep targets
+- Alter historical data silently
+- Calculate readiness scores
+- Diagnose injuries or give medical advice
+- Create supplement stacks autonomously
+- Override pain or safety rules
+- Infer that missing data is normal
+- Rewrite the entire programme based on one poor session
+
+---
+
+## Structured LLM tool calls
+
+The LLM interacts with Cognix through narrow tools only. It does not write SQL.
+
+Available tools:
+
+```
+get_today_context()
+get_current_session()
+record_set_result()
+record_pain_report()
+request_clarification()
+get_exercise_history()
+suggest_exercise_substitution()
+explain_coach_decision()
+record_session_feedback()
+```
+
+Example tool call:
+
+```json
+{
+  "tool": "record_set_result",
+  "arguments": {
+    "session_id": "sess_001",
+    "exercise_id": "weighted_pull_up",
+    "set_number": 2,
+    "load_kg": 10,
+    "reps": 6,
+    "rir": 1,
+    "completion_status": "completed"
+  }
+}
+```
+
+Zod (TypeScript) or Pydantic (Python) validates every tool call before persistence.
+
+---
+
 ## Core principle: deterministic code calculates, LLM explains
 
 The readiness score, mode, and all component scores are calculated by pure TypeScript functions in `src/lib/scoring.ts`. An LLM receives these pre-computed outputs and writes plain-English explanations. The LLM never calculates, adjusts, or invents a score.

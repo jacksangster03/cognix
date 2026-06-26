@@ -210,6 +210,207 @@ CREATE TABLE body_metrics (
 
 ---
 
+## Coaching schema (v0.3+)
+
+These tables support the Telegram coaching loop. See `COACHING_SPEC.md` for design rationale.
+
+### athlete_profiles
+
+Extended profile beyond `user_profiles`. Stores stable goals, constraints, preferences and schedule rules.
+
+```sql
+CREATE TABLE athlete_profiles (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  goals_primary TEXT[] NOT NULL DEFAULT '{}',
+  goals_secondary TEXT[] DEFAULT '{}',
+  priority_hierarchy TEXT[] NOT NULL DEFAULT '{}',
+  available_days_per_week INTEGER,
+  typical_session_minutes INTEGER,
+  preferred_training_time TEXT,
+  gym_name TEXT,
+  strength_training_years INTEGER,
+  running_level TEXT CHECK (running_level IN ('beginner','intermediate','advanced')),
+  cycling_level TEXT CHECK (cycling_level IN ('beginner','intermediate','advanced')),
+  schedule_rules JSONB DEFAULT '{}',
+  equipment TEXT[] DEFAULT '{}',
+  telegram_user_id BIGINT UNIQUE,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### training_programmes
+
+```sql
+CREATE TABLE training_programmes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  block_type TEXT CHECK (block_type IN ('hypertrophy','strength','endurance','mixed','deload')),
+  status TEXT CHECK (status IN ('active','completed','abandoned')) DEFAULT 'active',
+  goals JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### planned_sessions
+
+One row per planned training day.
+
+```sql
+CREATE TABLE planned_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  programme_id UUID REFERENCES training_programmes(id),
+  planned_date DATE NOT NULL,
+  session_type TEXT NOT NULL,
+  estimated_duration_minutes INTEGER,
+  readiness_mode_at_planning TEXT,
+  status TEXT CHECK (status IN ('pending','accepted','swapped','skipped','completed')) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### planned_exercises
+
+One row per exercise within a planned session.
+
+```sql
+CREATE TABLE planned_exercises (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES planned_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  exercise_id TEXT NOT NULL,
+  exercise_order INTEGER NOT NULL,
+  purpose TEXT,
+  target_sets INTEGER,
+  rep_min INTEGER,
+  rep_max INTEGER,
+  target_rir INTEGER,
+  target_load_kg DECIMAL,
+  rest_seconds INTEGER,
+  substitution_options TEXT[] DEFAULT '{}'
+);
+```
+
+### performed_sets
+
+Critical table. Never overwrite what was prescribed. Store prescription and performance separately.
+
+```sql
+CREATE TABLE performed_sets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES training_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  exercise_id TEXT NOT NULL,
+  set_number INTEGER NOT NULL,
+  set_type TEXT CHECK (set_type IN ('warmup','working','backoff','technique','amrap')) DEFAULT 'working',
+  prescribed_load_kg DECIMAL,
+  prescribed_rep_min INTEGER,
+  prescribed_rep_max INTEGER,
+  prescribed_rir INTEGER,
+  actual_load_kg DECIMAL,
+  actual_reps INTEGER,
+  actual_rir INTEGER,
+  completion_status TEXT CHECK (completion_status IN ('completed','failed','skipped','pain_stop')) DEFAULT 'completed',
+  rep_quality TEXT CHECK (rep_quality IN ('fast','normal','slow','grinder','technique_breakdown')),
+  pain_score INTEGER CHECK (pain_score BETWEEN 0 AND 10),
+  pain_location TEXT,
+  rest_seconds INTEGER,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  source TEXT CHECK (source IN ('telegram_button','telegram_text','manual','garmin')) DEFAULT 'telegram_button',
+  raw_user_text TEXT,
+  parser_confidence DECIMAL CHECK (parser_confidence BETWEEN 0 AND 1),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### progression_states
+
+Exercise-level state. Updated by the learning engine after each session.
+
+```sql
+CREATE TABLE progression_states (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  exercise_id TEXT NOT NULL,
+  estimated_1rm_kg DECIMAL,
+  current_working_load_kg DECIMAL,
+  preferred_rep_min INTEGER,
+  preferred_rep_max INTEGER,
+  typical_set_dropoff_pct DECIMAL,
+  minimum_recovery_hours INTEGER,
+  load_increment_kg DECIMAL,
+  performance_trend TEXT CHECK (performance_trend IN ('improving','stable','declining','insufficient_data')) DEFAULT 'insufficient_data',
+  confidence DECIMAL CHECK (confidence BETWEEN 0 AND 1) DEFAULT 0,
+  last_exposure_date DATE,
+  total_exposures INTEGER DEFAULT 0,
+  notes TEXT[],
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, exercise_id)
+);
+```
+
+### coach_decisions
+
+Audit trail for every automated coaching decision.
+
+```sql
+CREATE TABLE coach_decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES training_sessions(id),
+  decision_type TEXT NOT NULL,
+  decision_at TIMESTAMPTZ DEFAULT NOW(),
+  inputs JSONB NOT NULL,
+  output JSONB NOT NULL,
+  engine TEXT NOT NULL,
+  readiness_score INTEGER,
+  readiness_mode TEXT
+);
+```
+
+### pain_events
+
+```sql
+CREATE TABLE pain_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES training_sessions(id),
+  exercise_id TEXT,
+  pain_score INTEGER CHECK (pain_score BETWEEN 0 AND 10),
+  pain_location TEXT,
+  pain_type TEXT,
+  triggered_safety_stop BOOLEAN DEFAULT FALSE,
+  reported_at TIMESTAMPTZ DEFAULT NOW(),
+  notes TEXT
+);
+```
+
+### llm_interactions
+
+For cost tracking, debugging and audit.
+
+```sql
+CREATE TABLE llm_interactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES training_sessions(id),
+  interaction_type TEXT CHECK (interaction_type IN ('parse_set_result','explain_decision','clarification','trend_summary','daily_brief')),
+  raw_user_text TEXT,
+  structured_output JSONB,
+  parser_confidence DECIMAL,
+  model_used TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+---
+
 ## Relationships
 
 ```
