@@ -1,26 +1,40 @@
 # Cognix
 
-**Closed-loop personal coaching. Observe your body, decide what to train, coach you through it, learn from the result.**
+**A local-first readiness and training-load tool for hybrid endurance and strength athletes.** It combines a daily check-in, a training log and (mock) biometric data into a deterministic readiness score and a plain-language recommendation.
 
-Cognix synthesises wearable biometric data, activity imports, manual check-ins, nutrition, caffeine, supplement and training logs into a daily readiness score and actionable protocol. It then delivers the session one set at a time through Telegram and adapts the prescription in real time based on what you actually do. It is a provider-agnostic hybrid athlete coaching system, not a fitness tracker.
+Personal performance tool, not a medical device. Version 0.1: runs in the browser, stores data in `localStorage`, no accounts, no wearable integrations yet.
+
+## Status at a glance
+
+| Area | State |
+|---|---|
+| Readiness score, training mode, ACWR, HRV-deviation logic | Implemented (pure TypeScript, no AI) |
+| Daily check-in, training log, planner, experiments, progress views | Implemented |
+| Biometric inputs | Mock data only; no live wearable connection |
+| AI brief layer | Implemented as an optional provider layer; defaults to a deterministic provider with no API call |
+| Strava, Garmin, Oura, Renpho, weather, calendar | Planned (see roadmap and `INTEGRATIONS.md`) |
+| Telegram set-by-set coaching, adaptive prescription | Design documents only (`COACHING_SPEC.md`, `TELEGRAM_FLOWS.md`) |
+| Automated tests | None yet |
+
+The sections below describe the full intended product loop; each section is labelled with the version it belongs to.
 
 ---
 
-## The complete product loop
+## The intended product loop
 
 ```
 Measure → Understand → Plan → Coach → Observe → Adapt → Learn
 ```
 
-1. **Measure**: Renpho, Garmin, Oura, Strava, weather, calendar, manual check-in
-2. **Understand**: Readiness, fatigue, training load, muscle recovery, progression status
-3. **Plan**: Choose workout, exercises, sets, reps, loads and targets
-4. **Coach**: Deliver one instruction at a time through Telegram
-5. **Observe**: Record weight, reps, RIR, pain, technique and subjective difficulty
-6. **Adapt**: Modify the current session and future programme
-7. **Learn**: Update exercise-specific strength estimates and response patterns
+1. **Measure**: manual check-in today; Strava, Garmin, Oura and Renpho planned
+2. **Understand**: readiness, fatigue, training load, muscle recovery
+3. **Plan**: choose workout, exercises, sets, reps and targets
+4. **Coach** (planned): deliver one instruction at a time through Telegram
+5. **Observe** (planned): record weight, reps, RIR, pain, technique and subjective difficulty
+6. **Adapt** (planned): modify the current session and future programme
+7. **Learn** (planned): update exercise-specific strength estimates and response patterns
 
-The system operates on three timescales: long-term programming (8–12 weeks), daily planning, and live session adaptation. These are separate engines. An LLM alone does not control any of them.
+The design separates three timescales: long-term programming (8 to 12 weeks), daily planning, and live session adaptation. An LLM alone does not control any of them.
 
 Cognix answers one question every morning:
 
@@ -42,14 +56,14 @@ Cognix connects these signals into a single answer you can act on in 30 seconds 
 
 The origin was a failed attempt at the Madrid to Segovia route: 160km+ through the Sierra Nevada, abandoned due to heat, fatigue, and no real training base. Cognix is the system built to make sure that does not happen again.
 
-The secondary purpose is portfolio and career positioning. This project demonstrates:
+Design goals, and where each stands in v0.1:
 
-- **Hybrid athlete data architecture**: running + cycling + strength + recovery in one unified model
-- **Provider-agnostic integration design**: Strava, Garmin, WHOOP, Fitbit, Oura all feed the same scoring engine without rewriting it
-- **Endurance intelligence**: ACWR from real activities, Zone 2 estimation, event preparedness scoring
-- **AI product engineering**: deterministic scoring separate from LLM synthesis, structured output, Zod validation
-- **Healthtech product thinking**: evidence-based logic, data confidence modelling, no medical claims
-- **Full-stack development**: Next.js 15 App Router, TypeScript, Supabase-ready architecture
+- **Hybrid athlete data model**: running, cycling, strength and recovery in one model (types implemented; real ingestion planned)
+- **Provider-agnostic integration design**: scoring accepts typed interfaces rather than provider objects (mock recovery provider implemented; real providers planned)
+- **Endurance intelligence**: ACWR is implemented; Zone 2 tracking and event preparedness depend on Strava import (planned for v0.3)
+- **Deterministic scoring separate from LLM prose**: implemented
+- **Data confidence modelling**: implemented
+- **Full-stack TypeScript**: Next.js App Router, Tailwind, shadcn/ui, Recharts, Zod
 
 ---
 
@@ -125,7 +139,7 @@ Cognix is a personal performance tool. It does not diagnose, treat, or give medi
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
 | Components | shadcn/ui |
@@ -489,15 +503,15 @@ See `DATA_MODEL.md` for the full schema.
 
 ## Healthtech and digital biomarker relevance
 
-**Digital biomarkers:** HRV deviation from personal baseline mirrors clinical digital biomarker validation methodology. Sleep architecture analysis (SWS, REM) parallels polysomnography-derived digital endpoints.
+**Digital biomarkers:** HRV deviation from personal baseline follows the same idea as digital-biomarker work (personal baselines), without any clinical validation here. Sleep architecture analysis (SWS, REM) parallels polysomnography-derived digital endpoints.
 
-**Remote patient monitoring (RPM):** The wearable ingestion pipeline, signal processing, and threshold-based alerting mirror RPM system architecture used in cardiac rehabilitation and oncology symptom monitoring.
+**Remote patient monitoring (RPM):** The wearable ingestion pipeline, signal processing, and threshold-based alerting is a simplified analogue of remote-monitoring architecture, not a monitoring system.
 
 **Real-world evidence (RWE):** The experiment engine is a simplified N-of-1 study design: individual subject, repeated measures, controlled intervention, pre/post comparison.
 
 **Endurance medicine:** ACWR and training load monitoring are used in sports medicine and physiotherapy to predict and prevent overtraining injuries. The Zone 2 time tracking maps directly to aerobic base development protocols used by elite endurance coaches.
 
-**Pharma digital health:** The data confidence layer, deterministic/LLM separation, and no-medical-claims architecture are directly relevant to SaMD (Software as a Medical Device) development under EU MDR and FDA guidance.
+**Pharma digital health:** The data confidence layer, deterministic/LLM separation, and no-medical-claims architecture are design habits that matter for health software generally. Cognix makes no regulatory claim and is not a Software as a Medical Device.
 
 ---
 
@@ -551,33 +565,10 @@ See `INTEGRATIONS.md` for the full wearable comparison and recommendations. See 
 
 ---
 
-## Portfolio positioning
-
-Relevant for roles in: pharma digital health, digital biomarkers, healthtech product, wearable data, AI decision support, remote patient monitoring, clinical data science, sports performance technology.
-
-Interview talking points:
-- Why is provider-agnostic architecture important here? (wearable market is fragmented; lock-in to one device limits the addressable user base and data quality)
-- What is ACWR and why does it matter? (injury prediction metric from sports science; 7-day vs 28-day load ratio; used in elite sports and physiotherapy)
-- Why does deterministic code calculate and LLM explain? (trustworthy, auditable, cost-controlled, regulatory-ready)
-- What is HRV RMSSD and why use deviation not absolute value? (interpersonal variation is large; intra-individual deviation is clinically meaningful)
-- What is Zone 2 training and why track it? (aerobic base development; the foundation of endurance capacity; chronically undertrained in recreational athletes)
-
-See `PORTFOLIO_POSITIONING.md` for the full career narrative.
-
----
-
-## Companion project
-
-**Neuropharma RAG** (`github.com/jacksangster03/neuropharma-rag`): RAG pipeline over ClinicalTrials.gov + PubMed for Parkinson's disease drug pipeline intelligence. ChromaDB, sentence-transformers, Claude synthesis.
-
-Together these projects cover the full range: clinical data engineering and wearable health intelligence.
-
----
-
 ## Disclaimer
 
 Cognix is a personal performance tool. Not a medical device. Not medical advice. If you experience significant pain or are managing a health condition, seek qualified clinical advice before using any tool to guide training or nutrition decisions.
 
 ---
 
-*Built with Next.js 15, TypeScript, Tailwind, shadcn/ui, Recharts. Designed to grow to Supabase, Strava, Garmin, weather, and a pluggable recovery provider layer.*
+*Built with Next.js 16, TypeScript, Tailwind, shadcn/ui, Recharts. Designed to grow to Supabase, Strava, Garmin, weather, and a pluggable recovery provider layer.*
