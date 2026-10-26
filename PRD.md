@@ -27,8 +27,7 @@ This PRD defines the next major evolution of Cognix: from a readiness dashboard 
 
 The canonical source of truth for who Jack is as a trainee is:
 
-- `~/Documents/Obsidian/Claude/Domains/jack_gym_training_profile_master.md` (markdown master)
-- `Jack_Gym_Training_Profile_Master.docx` (mirror in this repo)
+- A private training profile kept outside this repository. It was removed from the public repo because it holds personal training data.
 
 **Known conflicts with `COACHING_SPEC.md`, resolved in favour of the master profile:**
 
@@ -190,10 +189,10 @@ Ruthlessly: word count is not a quality metric, and padded PRDs rot. This docume
 
 See canonical profile (§0.2). Compressed for design reference:
 
-- 85 kg, recomp goal, hypertrophy-first, aesthetics-driven (arms > shoulders > chest > back > fat loss > abs > endurance > legs).
+- Body-composition goal, hypertrophy-first, aesthetics-driven (arms > shoulders > chest > back > fat loss > abs > endurance > legs).
 - 3-4 evening sessions/week, ~75 min, 2-day floor, 30-40 min rescue threshold.
-- Basic-Fit Madrid: dumbbells to ~50 kg, machines, benches reliable; one contested cable station; racks queue.
-- Palm pain 6-7/10 on heavy barbell bench (palmar hyperhidrosis history): neutral-grip DB and machine pressing are defaults.
+- Commercial gym: dumbbells to ~50 kg, machines, benches reliable; one contested cable station; racks queue.
+- Discomfort on heavy barbell bench: neutral-grip DB and machine pressing are defaults.
 - Weak mind-muscle connection in chest and back: cue-heavy coaching needed.
 - Chronic under-effort (trains to mild discomfort): RIR calibration is a coaching feature, not an assumption.
 - Motivation volatile; binary adherence failure mode; prefers shorter over easier when low.
