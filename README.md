@@ -60,7 +60,7 @@ Design goals, and where each stands in v0.1:
 
 - **Hybrid athlete data model**: running, cycling, strength and recovery in one model (types implemented; real ingestion planned)
 - **Provider-agnostic integration design**: scoring accepts typed interfaces rather than provider objects (mock recovery provider implemented; real providers planned)
-- **Endurance intelligence**: ACWR and Zone 2 logic (event preparedness depends on Strava import, planned for v0.3)
+- **Endurance intelligence**: ACWR is implemented; Zone 2 tracking and event preparedness depend on Strava import (planned for v0.3)
 - **Deterministic scoring separate from LLM prose**: implemented
 - **Data confidence modelling**: implemented
 - **Full-stack TypeScript**: Next.js App Router, Tailwind, shadcn/ui, Recharts, Zod
